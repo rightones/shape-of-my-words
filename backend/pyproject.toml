@@ -1,0 +1,33 @@
+[project]
+name = "backend"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "flasgger>=0.9.7.1",
+    "flask>=3.1.0",
+    "gensim>=4.3.3",
+    "numpy>=1.26.4",
+    "pandas>=2.2.3",
+    "requests>=2.32.3",
+    "scikit-learn>=1.6.1",
+    "torch>=2.8.0.dev20250502",
+]
+
+[tool.uv.sources]
+torch = [
+    { index = "pytorch-rocm" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-rocm"
+url = "https://download.pytorch.org/whl/nightly/rocm6.4"
+
+[dependency-groups]
+dev = [
+    "black>=25.1.0",
+]
+
+[tool.uv]
+index-strategy = "unsafe-best-match"
