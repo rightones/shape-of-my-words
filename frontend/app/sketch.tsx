@@ -20,6 +20,8 @@ const Sketch = () => {
     const [points, setPoints] = useState<{ x: number; y: number; pcaCoords?: [number, number] }[]>([]);
     const [wordInput, setWordInput] = useState("");
 
+    const [vectorToShow, setVectorToShow] = useState<[number, number] | null>(null);
+
     const shapesRef = useRef<Matter.Body[]>([]);
 
     const scoreRef = useRef(score);
@@ -130,7 +132,7 @@ const Sketch = () => {
 
     const mapPCAToCanvas = useCallback((pcaCoords: [number, number]): [number, number] => {
         const [pcaX, pcaY] = pcaCoords;
-        console.log(pcaCoords);
+        setVectorToShow(pcaCoords);
 
         const canvasWidth = 800;
         const canvasHeight = 600;
@@ -247,6 +249,11 @@ const Sketch = () => {
                     }}
                 />
                 <button onClick={addWord}>Add Word</button>
+                <span>
+                    {vectorToShow
+                        ? `Vector: [${vectorToShow[0].toFixed(2)}, ${vectorToShow[1].toFixed(2)}]`
+                        : "No vector to show"}
+                </span>
             </div>
         </div>
     );
