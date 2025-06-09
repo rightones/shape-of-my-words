@@ -29,7 +29,7 @@ const Sketch = () => {
       word,
       x: Math.random() * 700 + 50,
       y: Math.random() * -200 - 100,
-      speed: Math.random() * 1.5 + 1.5,
+      speed: Math.random() * 1.0 + 1.0,
     });
   }, []);
 
@@ -65,20 +65,20 @@ const Sketch = () => {
       Matter.Engine.update(matterRef.current.engine);
 
       for (const fw of fallingWords.current) {
-        fw.y += fw.speed;
-        p.push();
-        p.translate(fw.x, fw.y);
-        p.noStroke();
-        p.fill(255, 255, 255, 100);
-        p.ellipse(0, 0, 90, 50);
-        p.fill(255, 240, 180);
-        drawStar(p, 0, 0, 10, 25, 5);
-        p.fill(30);
-        p.textAlign(p.CENTER, p.CENTER);
-        p.textSize(14);
-        p.text(fw.word, 0, 0);
-        p.pop();
-      }
+  fw.y += fw.speed;
+  p.push();
+  p.translate(fw.x, fw.y);
+  p.fill(255);
+  p.stroke(255);
+  drawStar(p, 0, 0, 6, 12, 5); // same shape as points
+  p.fill(255);
+  p.noStroke();
+  p.textAlign(p.LEFT, p.BOTTOM);
+  p.textSize(16);
+  p.text(fw.word, 8, -8); // offset to right-top
+  p.pop();
+}
+
       fallingWords.current = fallingWords.current.filter(w => w.y < p.height + 50);
 
       if (matterRef.current.ground) {
@@ -99,7 +99,7 @@ const Sketch = () => {
         p.fill(255);
         p.noStroke();
         p.textAlign(p.CENTER, p.CENTER);
-        p.textSize(14);
+        p.textSize(16);
         p.text(inputWordsRef.current[i], pt.x, pt.y - 18);
 
         if (i > 0) {
