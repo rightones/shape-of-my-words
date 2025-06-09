@@ -24,6 +24,26 @@ const Sketch = () => {
   const backgroundStars = useRef<{ x: number; y: number; size: number }[]>([]);
   const fallingWords = useRef<{ word: string; x: number; y: number; speed: number }[]>([]);
 
+  const triggerGameOver = useCallback((p: p5) => {
+    if (!gameOverRef.current) {
+      gameOverRef.current = true;
+      setGameOver(true);
+      p.noLoop();
+
+      /* GAME OVER LOGIC
+      setTimeout(() => {
+        gameOverRef.current = false;
+        setGameOver(false);
+        setScore(0);
+        setInputWords([]);
+        setPoints([]);
+        shapesRef.current = [];
+        p.loop();
+      }, 3000);
+      */
+    }
+  }, []);
+
   const addFallingWord = useCallback((word: string) => {
     fallingWords.current.push({
       word,
@@ -40,7 +60,7 @@ const Sketch = () => {
 
       matterRef.current.engine = Matter.Engine.create();
       matterRef.current.world = matterRef.current.engine.world;
-      matterRef.current.engine.gravity.y = 1;
+      matterRef.current.engine.gravity.y = 0.8;
 
       matterRef.current.ground = Matter.Bodies.rectangle(p.width / 2, p.height - 20, p.width / 2, 40, { isStatic: true });
       Matter.World.add(matterRef.current.world, matterRef.current.ground);
@@ -65,19 +85,19 @@ const Sketch = () => {
       Matter.Engine.update(matterRef.current.engine);
 
       for (const fw of fallingWords.current) {
-  fw.y += fw.speed;
-  p.push();
-  p.translate(fw.x, fw.y);
-  p.fill(255);
-  p.stroke(255);
-  drawStar(p, 0, 0, 6, 12, 5); // same shape as points
-  p.fill(255);
-  p.noStroke();
-  p.textAlign(p.LEFT, p.BOTTOM);
-  p.textSize(16);
-  p.text(fw.word, 8, -8); // offset to right-top
-  p.pop();
-}
+        fw.y += fw.speed;
+        p.push();
+        p.translate(fw.x, fw.y);
+        p.fill(255);
+        p.stroke(255);
+        drawStar(p, 0, 0, 6, 12, 5);
+        p.fill(255);
+        p.noStroke();
+        p.textAlign(p.LEFT, p.BOTTOM);
+        p.textSize(16);
+        p.text(fw.word, 8, -8);
+        p.pop();
+      }
 
       fallingWords.current = fallingWords.current.filter(w => w.y < p.height + 50);
 
@@ -129,7 +149,13 @@ const Sketch = () => {
         }
         p.endShape(p.CLOSE);
 
-        // Draw star at each vertex
+        // Check game over condition
+        for (const v of vertices) {
+          if (v.y > p.height) {
+            triggerGameOver(p);
+          }
+        }
+
         for (const v of vertices) {
           p.push();
           p.translate(v.x, v.y);
@@ -148,7 +174,6 @@ const Sketch = () => {
       p.text("Topic: Dreamy Dishes", p.width / 2, 75);
 
       if (gameOverRef.current) {
-        p.noLoop();
         p.fill(255, 100, 100);
         p.textSize(40);
         p.textAlign(p.CENTER);
@@ -170,7 +195,7 @@ const Sketch = () => {
       }
       p.endShape(p.CLOSE);
     }
-  }, [addFallingWord]);
+  }, [addFallingWord, triggerGameOver]);
 
   const createShape = useCallback(() => {
     if (!matterRef.current.world || pointsRef.current.length !== 4) return;
@@ -195,7 +220,6 @@ const Sketch = () => {
     if (gameOver || !wordInput.trim()) return;
     const word = wordInput.trim();
     setWordInput("");
-
     const position = [Math.random() * 600 + 100, Math.random() * 300 + 100];
     const newPoint = { x: position[0], y: position[1] };
     setPoints(prev => [...prev, newPoint]);
@@ -216,10 +240,7 @@ const Sketch = () => {
     gameOverRef.current = gameOver;
     inputWordsRef.current = inputWords;
     pointsRef.current = points;
-
-    if (points.length === 4) {
-      createShape();
-    }
+    if (points.length === 4) createShape();
   }, [score, gameOver, inputWords, points, createShape]);
 
   useEffect(() => {
