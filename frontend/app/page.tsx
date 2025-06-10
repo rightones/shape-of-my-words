@@ -1,13 +1,7 @@
 "use client";
 
-import dynamic from "next/dynamic";
+import IntegratedWordGame from "../components/IntegratedWordGame";
 
-const Sketch = dynamic(() => import("./sketch"), {
-    ssr: false,
-});
-
-const Page = () => {
-    return <Sketch />;
-};
-
-export default Page;
+export default function Home() {
+    return <IntegratedWordGame />;
+}

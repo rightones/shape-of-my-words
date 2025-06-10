@@ -11,6 +11,7 @@
   "dependencies": {
     "@types/matter-js": "^0.19.8",
     "@types/p5": "^1.7.6",
+    "framer-motion": "^12.16.0",
     "matter-js": "^0.20.0",
     "next": "15.3.2",
     "p5": "^2.0.2",

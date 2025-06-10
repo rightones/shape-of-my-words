@@ -1,8 +1,12 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, Response
+from flask_cors import CORS
 import utils  # utils.py 모듈을 import 합니다.
 import numpy as np
 import torch
 from flasgger import Swagger  # Swagger 추가
+from services.word_generator import WordGeneratorService
+import json
+import time
 
 # from langdetect import DetectorFactory # Optional: For reproducible results
 # DetectorFactory.seed = 0 # Optional: Seed for reproducibility
@@ -32,6 +36,10 @@ def detect_language(text):
 
 
 app = Flask(__name__)
+CORS(app)  # CORS 설정 추가
+
+# 단어 생성 서비스 초기화
+word_generator = WordGeneratorService()
 
 # --- Flasgger (Swagger UI) Configuration ---
 # Basic configuration, can be customized further
@@ -204,6 +212,354 @@ def get_word_coordinates():
             coordinates[word] = None
 
     return jsonify(coordinates)
+
+
+@app.route("/topics", methods=["GET"])
+def get_topics():
+    """
+    사용 가능한 주제 목록을 반환합니다.
+    ---
+    responses:
+        200:
+            description: 주제 목록
+            content:
+                application/json:
+                    schema:
+                        type: object
+                        properties:
+                            topics:
+                                type: array
+                                items:
+                                    type: object
+                                    properties:
+                                        id:
+                                            type: string
+                                            description: 주제 ID
+                                        name:
+                                            type: string
+                                            description: 주제 이름
+                                        description:
+                                            type: string
+                                            description: 주제 설명
+                                    example:
+                                        id: "nature"
+                                        name: "자연"
+                                        description: "자연과 관련된 단어들"
+        500:
+            description: 서버 오류
+    """
+    try:
+        topics = word_generator.get_topics()
+        return jsonify({"topics": topics})
+    except Exception as e:
+        return jsonify({"error": f"주제 목록 조회 실패: {str(e)}"}), 500
+
+
+@app.route("/topics/generate", methods=["POST"])
+def generate_dynamic_topics():
+    """
+    LLM을 통해 동적으로 주제들을 생성합니다.
+    ---
+    requestBody:
+        description: 주제 생성 요청
+        required: true
+        content:
+            application/json:
+                schema:
+                    type: object
+                    properties:
+                        theme:
+                            type: string
+                            description: 전체적인 테마 (예: "판타지", "과학", "일상생활")
+                        difficulty:
+                            type: string
+                            enum: ["easy", "medium", "hard"]
+                            description: 난이도
+                        count:
+                            type: integer
+                            default: 6
+                            description: 생성할 주제 개수
+                    example:
+                        theme: "판타지"
+                        difficulty: "medium"
+                        count: 6
+    responses:
+        200:
+            description: 생성된 주제들
+            content:
+                application/json:
+                    schema:
+                        type: object
+                        properties:
+                            topics:
+                                type: array
+                                items:
+                                    type: object
+                                    properties:
+                                        id:
+                                            type: string
+                                        name:
+                                            type: string
+                                        description:
+                                            type: string
+                                        difficulty:
+                                            type: string
+                                        stage:
+                                            type: integer
+                            theme:
+                                type: string
+                            generated_at:
+                                type: number
+        400:
+            description: 잘못된 요청
+        500:
+            description: 서버 오류
+    """
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({"error": "요청 데이터가 필요합니다."}), 400
+
+        theme = data.get("theme", "일반")
+        difficulty = data.get("difficulty", "medium")
+        count = data.get("count", 6)
+
+        # 동적 주제 생성
+        result = word_generator.generate_dynamic_topics(theme, difficulty, count)
+        return jsonify(result)
+
+    except Exception as e:
+        return jsonify({"error": f"동적 주제 생성 실패: {str(e)}"}), 500
+
+
+@app.route("/words/<topic_id>", methods=["GET"])
+def generate_words(topic_id):
+    """
+    특정 주제에 대한 단어들을 생성합니다.
+    ---
+    parameters:
+        - name: topic_id
+          in: path
+          required: true
+          schema:
+              type: string
+          description: 주제 ID
+        - name: count
+          in: query
+          required: false
+          schema:
+              type: integer
+              default: 500
+          description: 생성할 단어 개수
+        - name: use_cache
+          in: query
+          required: false
+          schema:
+              type: boolean
+              default: true
+          description: 캐시 사용 여부
+    responses:
+        200:
+            description: 생성된 단어들
+            content:
+                application/json:
+                    schema:
+                        type: object
+                        properties:
+                            topic_id:
+                                type: string
+                                description: 주제 ID
+                            topic_name:
+                                type: string
+                                description: 주제 이름
+                            words:
+                                type: array
+                                items:
+                                    type: string
+                                description: 생성된 단어들
+                            total_count:
+                                type: integer
+                                description: 총 단어 개수
+                            from_cache:
+                                type: boolean
+                                description: 캐시에서 가져왔는지 여부
+                            generated_at:
+                                type: number
+                                description: 생성 시간 (timestamp)
+        400:
+            description: 잘못된 요청
+        404:
+            description: 주제를 찾을 수 없음
+        500:
+            description: 서버 오류
+    """
+    try:
+        # 쿼리 파라미터 처리
+        count = request.args.get("count", 500, type=int)
+        use_cache = request.args.get("use_cache", "true").lower() == "true"
+
+        # 단어 생성
+        result = word_generator.generate_words_for_topic(topic_id, count, use_cache)
+        return jsonify(result)
+
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 404
+    except Exception as e:
+        return jsonify({"error": f"단어 생성 실패: {str(e)}"}), 500
+
+
+@app.route("/words/<topic_id>/cache", methods=["DELETE"])
+def clear_topic_cache(topic_id):
+    """
+    특정 주제의 캐시를 삭제합니다.
+    ---
+    parameters:
+        - name: topic_id
+          in: path
+          required: true
+          schema:
+              type: string
+          description: 주제 ID
+    responses:
+        200:
+            description: 캐시 삭제 성공
+        500:
+            description: 서버 오류
+    """
+    try:
+        word_generator.clear_cache(topic_id)
+        return jsonify({"message": f"주제 '{topic_id}'의 캐시가 삭제되었습니다."})
+    except Exception as e:
+        return jsonify({"error": f"캐시 삭제 실패: {str(e)}"}), 500
+
+
+@app.route("/cache", methods=["DELETE"])
+def clear_all_cache():
+    """
+    모든 캐시를 삭제합니다.
+    ---
+    responses:
+        200:
+            description: 캐시 삭제 성공
+        500:
+            description: 서버 오류
+    """
+    try:
+        word_generator.clear_cache()
+        return jsonify({"message": "모든 캐시가 삭제되었습니다."})
+    except Exception as e:
+        return jsonify({"error": f"캐시 삭제 실패: {str(e)}"}), 500
+
+
+@app.route("/words/<topic_id>/stream", methods=["GET"])
+def stream_words(topic_id):
+    """
+    특정 주제에 대한 단어들을 스트리밍으로 생성합니다.
+    ---
+    parameters:
+        - name: topic_id
+          in: path
+          required: true
+          schema:
+              type: string
+          description: 주제 ID
+        - name: batch_size
+          in: query
+          required: false
+          schema:
+              type: integer
+              default: 20
+          description: 한 번에 생성할 단어 개수
+        - name: total_batches
+          in: query
+          required: false
+          schema:
+              type: integer
+              default: 10
+          description: 총 배치 수
+    responses:
+        200:
+            description: 스트리밍 단어 데이터
+            content:
+                text/event-stream:
+                    schema:
+                        type: string
+        404:
+            description: 주제를 찾을 수 없음
+        500:
+            description: 서버 오류
+    """
+    # request context 내에서 파라미터 미리 추출
+    batch_size = request.args.get("batch_size", 20, type=int)
+    total_batches = request.args.get("total_batches", 10, type=int)
+
+    def generate():
+        try:
+            # 주제 확인
+            topic = word_generator.get_topic_by_id(topic_id)
+            if not topic:
+                yield f"data: {json.dumps({'error': f'존재하지 않는 주제 ID: {topic_id}'})}\n\n"
+                return
+
+            # 시작 이벤트 전송
+            yield f"data: {json.dumps({'type': 'start', 'topic_name': topic['name'], 'total_batches': total_batches})}\n\n"
+
+            all_words = []
+
+            for batch_num in range(total_batches):
+                try:
+                    # 배치별로 단어 생성 (배치 번호 전달)
+                    for (
+                        word_batch
+                    ) in word_generator.generate_words_streaming_with_batch(
+                        topic_id, batch_size, batch_num + 1
+                    ):
+                        if word_batch:
+                            all_words.extend(word_batch)
+
+                            # 배치 데이터 전송
+                            batch_data = {
+                                "type": "batch",
+                                "batch_number": batch_num + 1,
+                                "words": word_batch,
+                                "total_words_so_far": len(all_words),
+                                "progress": ((batch_num + 1) / total_batches) * 100,
+                            }
+                            yield f"data: {json.dumps(batch_data, ensure_ascii=False)}\n\n"
+
+                            # 잠시 대기 (너무 빠른 전송 방지)
+                            time.sleep(0.5)
+
+                except Exception as e:
+                    error_data = {
+                        "type": "error",
+                        "message": f"배치 {batch_num + 1} 생성 실패: {str(e)}",
+                    }
+                    yield f"data: {json.dumps(error_data)}\n\n"
+                    continue
+
+            # 완료 이벤트 전송
+            complete_data = {
+                "type": "complete",
+                "total_words": len(all_words),
+                "all_words": all_words,
+            }
+            yield f"data: {json.dumps(complete_data, ensure_ascii=False)}\n\n"
+
+        except Exception as e:
+            error_data = {"type": "error", "message": f"스트리밍 실패: {str(e)}"}
+            yield f"data: {json.dumps(error_data)}\n\n"
+
+    return Response(
+        generate(),
+        mimetype="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Headers": "Cache-Control",
+        },
+    )
 
 
 if __name__ == "__main__":
