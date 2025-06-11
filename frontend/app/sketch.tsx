@@ -9,14 +9,16 @@ const Sketch = () => {
     const canvasRef = useRef<HTMLDivElement>(null);
     const p5Instance = useRef<p5 | null>(null);
 
-    const matterRef = useRef({ engine: null, world: null, ground: null });
+    const matterRef = useRef<{ engine: Matter.Engine | null; world: Matter.World | null; ground: Matter.Body | null }>({ 
+        engine: null, 
+        world: null, 
+        ground: null 
+    });
     const [score, setScore] = useState(0);
     const [gameOver, setGameOver] = useState(false);
     const [inputWords, setInputWords] = useState<string[]>([]);
     const [points, setPoints] = useState<{ x: number; y: number }[]>([]);
     const [wordInput, setWordInput] = useState("");
-
-    const [vectorToShow, setVectorToShow] = useState<[number, number] | null>(null);
 
     const shapesRef = useRef<Matter.Body[]>([]);
     const scoreRef = useRef(score);
@@ -26,12 +28,32 @@ const Sketch = () => {
     const backgroundStars = useRef<{ x: number; y: number; size: number }[]>([]);
     const fallingWords = useRef<{ word: string; x: number; y: number; speed: number }[]>([]);
 
+    const triggerGameOver = useCallback((p: p5) => {
+        if (!gameOverRef.current) {
+            gameOverRef.current = true;
+            setGameOver(true);
+            p.noLoop();
+
+            /* GAME OVER LOGIC
+            setTimeout(() => {
+                gameOverRef.current = false;
+                setGameOver(false);
+                setScore(0);
+                setInputWords([]);
+                setPoints([]);
+                shapesRef.current = [];
+                p.loop();
+            }, 3000);
+            */
+        }
+    }, []);
+
     const addFallingWord = useCallback((word: string) => {
         fallingWords.current.push({
             word,
             x: Math.random() * 700 + 50,
             y: Math.random() * -200 - 100,
-            speed: Math.random() * 1.5 + 1.5,
+            speed: Math.random() * 1.0 + 1.0,
         });
     }, []);
 
@@ -43,7 +65,7 @@ const Sketch = () => {
 
                 matterRef.current.engine = Matter.Engine.create();
                 matterRef.current.world = matterRef.current.engine.world;
-                matterRef.current.engine.gravity.y = 1;
+                matterRef.current.engine.gravity.y = 0.8;
 
                 matterRef.current.ground = Matter.Bodies.rectangle(p.width / 2, p.height - 20, p.width / 2, 40, {
                     isStatic: true,
@@ -73,15 +95,14 @@ const Sketch = () => {
                     fw.y += fw.speed;
                     p.push();
                     p.translate(fw.x, fw.y);
+                    p.fill(255);
+                    p.stroke(255);
+                    drawStar(p, 0, 0, 6, 12, 5);
+                    p.fill(255);
                     p.noStroke();
-                    p.fill(255, 255, 255, 100);
-                    p.ellipse(0, 0, 90, 50);
-                    p.fill(255, 240, 180);
-                    drawStar(p, 0, 0, 10, 25, 5);
-                    p.fill(30);
-                    p.textAlign(p.CENTER, p.CENTER);
-                    p.textSize(14);
-                    p.text(fw.word, 0, 0);
+                    p.textAlign(p.LEFT, p.BOTTOM);
+                    p.textSize(16);
+                    p.text(fw.word, 8, -8);
                     p.pop();
                 }
                 fallingWords.current = fallingWords.current.filter((w) => w.y < p.height + 50);
@@ -104,7 +125,7 @@ const Sketch = () => {
                     p.fill(255);
                     p.noStroke();
                     p.textAlign(p.CENTER, p.CENTER);
-                    p.textSize(14);
+                    p.textSize(16);
                     p.text(inputWordsRef.current[i], pt.x, pt.y - 18);
 
                     if (i > 0) {
@@ -134,6 +155,13 @@ const Sketch = () => {
                     }
                     p.endShape(p.CLOSE);
 
+                    // Check game over condition
+                    for (const v of vertices) {
+                        if (v.y > p.height) {
+                            triggerGameOver(p);
+                        }
+                    }
+
                     // Draw star at each vertex
                     for (const v of vertices) {
                         p.push();
@@ -153,7 +181,6 @@ const Sketch = () => {
                 p.text("Topic: Dreamy Dishes", p.width / 2, 75);
 
                 if (gameOverRef.current) {
-                    p.noLoop();
                     p.fill(255, 100, 100);
                     p.textSize(40);
                     p.textAlign(p.CENTER);
@@ -176,7 +203,7 @@ const Sketch = () => {
                 p.endShape(p.CLOSE);
             }
         },
-        [addFallingWord],
+        [addFallingWord, triggerGameOver],
     );
 
     const createShape = useCallback(() => {
@@ -261,11 +288,6 @@ const Sketch = () => {
                 <button onClick={addWord} className="bg-blue-300 text-black px-3 py-1 rounded hover:bg-blue-400">
                     Add Word
                 </button>
-                <span>
-                    {vectorToShow
-                        ? `Vector: [${vectorToShow[0].toFixed(2)}, ${vectorToShow[1].toFixed(2)}]`
-                        : "No vector to show"}
-                </span>
             </div>
         </div>
     );
