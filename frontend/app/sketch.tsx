@@ -29,18 +29,6 @@ const Sketch = () => {
       gameOverRef.current = true;
       setGameOver(true);
       p.noLoop();
-
-      /* GAME OVER LOGIC
-      setTimeout(() => {
-        gameOverRef.current = false;
-        setGameOver(false);
-        setScore(0);
-        setInputWords([]);
-        setPoints([]);
-        shapesRef.current = [];
-        p.loop();
-      }, 3000);
-      */
     }
   }, []);
 
@@ -57,6 +45,9 @@ const Sketch = () => {
     p.setup = () => {
       const cnv = p.createCanvas(800, 600);
       cnv.id("main-canvas");
+      p.colorMode(p.HSB, 450, 150, 150, 100);
+
+      p.blendMode(p.ADD);
 
       matterRef.current.engine = Matter.Engine.create();
       matterRef.current.world = matterRef.current.engine.world;
@@ -77,21 +68,26 @@ const Sketch = () => {
     p.draw = () => {
       if (!matterRef.current.engine) return;
 
-      p.background(15, 10, 30);
-      p.noStroke();
-      p.fill(255, 255, 255, 80);
-      backgroundStars.current.forEach(star => p.circle(star.x, star.y, star.size));
+     
+      p.background(10, 10, 10);
+
+      // Glowing background stars
+      p.blendMode(p.ADD);
+      //p.noStroke();
+      //p.fill(255, 255, 255, 80);
+      //backgroundStars.current.forEach(star => p.circle(star.x, star.y, star.size));
 
       Matter.Engine.update(matterRef.current.engine);
 
+      // Falling words
       for (const fw of fallingWords.current) {
         fw.y += fw.speed;
         p.push();
         p.translate(fw.x, fw.y);
-        p.fill(255);
-        p.stroke(255);
+        p.fill(255, 255, 255, 180);
+        p.stroke(255, 255, 255, 180);
         drawStar(p, 0, 0, 6, 12, 5);
-        p.fill(255);
+        p.fill(255, 255, 255, 230);
         p.noStroke();
         p.textAlign(p.LEFT, p.BOTTOM);
         p.textSize(16);
@@ -101,6 +97,8 @@ const Sketch = () => {
 
       fallingWords.current = fallingWords.current.filter(w => w.y < p.height + 50);
 
+      // Ground - normal blend mode
+      p.blendMode(p.NORMAL);
       if (matterRef.current.ground) {
         p.noStroke();
         p.fill(30, 20, 40);
@@ -108,15 +106,17 @@ const Sketch = () => {
         p.rect(matterRef.current.ground.position.x, matterRef.current.ground.position.y, p.width / 2, 40);
       }
 
+      // Points and lines - dreamy
+      p.blendMode(p.ADD);
       pointsRef.current.forEach((pt, i) => {
         p.push();
         p.translate(pt.x, pt.y);
-        p.fill(255);
-        p.stroke(255);
+        p.fill(255, 255, 255, 180);
+        p.stroke(255, 255, 255, 200);
         drawStar(p, 0, 0, 6, 12, 5);
         p.pop();
 
-        p.fill(255);
+        p.fill(255, 255, 255, 200);
         p.noStroke();
         p.textAlign(p.CENTER, p.CENTER);
         p.textSize(16);
@@ -124,7 +124,7 @@ const Sketch = () => {
 
         if (i > 0) {
           const prev = pointsRef.current[i - 1];
-          p.stroke(160, 180, 255, 200);
+          p.stroke(160, 180, 255, 120);
           p.strokeWeight(1.5);
           p.line(prev.x, prev.y, pt.x, pt.y);
         }
@@ -133,11 +133,12 @@ const Sketch = () => {
       if (pointsRef.current.length === 4) {
         const first = pointsRef.current[0];
         const last = pointsRef.current[3];
-        p.stroke(160, 180, 255, 200);
+        p.stroke(160, 180, 255, 120);
         p.strokeWeight(1.5);
         p.line(last.x, last.y, first.x, first.y);
       }
 
+      // Draw shapes
       for (const s of shapesRef.current) {
         const vertices = s.vertices;
         p.noFill();
@@ -149,23 +150,22 @@ const Sketch = () => {
         }
         p.endShape(p.CLOSE);
 
-        // Check game over condition
         for (const v of vertices) {
           if (v.y > p.height) {
             triggerGameOver(p);
           }
-        }
 
-        for (const v of vertices) {
           p.push();
           p.translate(v.x, v.y);
-          p.fill(255);
-          p.stroke(255);
+          p.fill(255, 255, 255, 160);
+          p.stroke(255, 255, 255, 180);
           drawStar(p, 0, 0, 6, 12, 5);
           p.pop();
         }
       }
 
+      // UI - back to normal mode
+      p.blendMode(p.NORMAL);
       p.noStroke();
       p.fill(255);
       p.textSize(24);
