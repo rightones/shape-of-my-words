@@ -46,14 +46,13 @@ const Sketch = () => {
       const cnv = p.createCanvas(800, 600);
       cnv.id("main-canvas");
       p.colorMode(p.HSB, 450, 150, 150, 100);
-
       p.blendMode(p.ADD);
 
       matterRef.current.engine = Matter.Engine.create();
       matterRef.current.world = matterRef.current.engine.world;
       matterRef.current.engine.gravity.y = 0.8;
 
-      matterRef.current.ground = Matter.Bodies.rectangle(p.width / 2, p.height - 20, p.width / 2, 40, { isStatic: true });
+      matterRef.current.ground = Matter.Bodies.rectangle(p.width / 2, p.height - 20, p.width, 40, { isStatic: true }); // ✅ 바닥 전체로
       Matter.World.add(matterRef.current.world, matterRef.current.ground);
 
       for (let i = 0; i < 200; i++) {
@@ -68,18 +67,12 @@ const Sketch = () => {
     p.draw = () => {
       if (!matterRef.current.engine) return;
 
-     
       p.background(10, 10, 10);
 
-      // Glowing background stars
       p.blendMode(p.ADD);
-      //p.noStroke();
-      //p.fill(255, 255, 255, 80);
-      //backgroundStars.current.forEach(star => p.circle(star.x, star.y, star.size));
 
       Matter.Engine.update(matterRef.current.engine);
 
-      // Falling words
       for (const fw of fallingWords.current) {
         fw.y += fw.speed;
         p.push();
@@ -97,16 +90,14 @@ const Sketch = () => {
 
       fallingWords.current = fallingWords.current.filter(w => w.y < p.height + 50);
 
-      // Ground - normal blend mode
       p.blendMode(p.NORMAL);
       if (matterRef.current.ground) {
         p.noStroke();
         p.fill(30, 20, 40);
         p.rectMode(p.CENTER);
-        p.rect(matterRef.current.ground.position.x, matterRef.current.ground.position.y, p.width / 2, 40);
+        p.rect(matterRef.current.ground.position.x, matterRef.current.ground.position.y, p.width, 40); // ✅ 수정됨
       }
 
-      // Points and lines - dreamy
       p.blendMode(p.ADD);
       pointsRef.current.forEach((pt, i) => {
         p.push();
@@ -138,7 +129,6 @@ const Sketch = () => {
         p.line(last.x, last.y, first.x, first.y);
       }
 
-      // Draw shapes
       for (const s of shapesRef.current) {
         const vertices = s.vertices;
         p.noFill();
@@ -164,7 +154,6 @@ const Sketch = () => {
         }
       }
 
-      // UI - back to normal mode
       p.blendMode(p.NORMAL);
       p.noStroke();
       p.fill(255);
@@ -205,7 +194,12 @@ const Sketch = () => {
       x: centerX + (p.x - centerX),
       y: centerY + (p.y - centerY)
     }));
-    const body = Matter.Bodies.fromVertices(centerX, centerY, [scaled], { restitution: 0.5 });
+    const body = Matter.Bodies.fromVertices(centerX, centerY, [scaled], {
+      restitution: 0.1,
+      friction: 0.6,
+      frictionStatic: 0.8,
+      frictionAir: 0.02,
+    });
     Matter.World.add(matterRef.current.world, body);
     shapesRef.current.push(body);
 
