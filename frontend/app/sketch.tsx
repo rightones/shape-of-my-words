@@ -9,7 +9,7 @@ const Sketch = () => {
   const canvasRef = useRef<HTMLDivElement>(null);
   const p5Instance = useRef<p5 | null>(null);
 
-  const matterRef = useRef({ engine: null, world: null, ground: null });
+  const matterRef = useRef({ engine: null, world: null, ground: null, stageTrigger: null });
   const [score, setScore] = useState(0);
   const [gameOver, setGameOver] = useState(false);
   const [inputWords, setInputWords] = useState<string[]>([]);
@@ -23,6 +23,10 @@ const Sketch = () => {
   const pointsRef = useRef(points);
   const backgroundStars = useRef<{ x: number; y: number; size: number }[]>([]);
   const fallingWords = useRef<{ word: string; x: number; y: number; speed: number }[]>([]);
+
+  // New stage clear logic variables
+  const touchingSinceRef = useRef<number | null>(null);
+  const stageClearRef = useRef(false);
 
   const triggerGameOver = useCallback((p: p5) => {
     if (!gameOverRef.current) {
@@ -43,22 +47,80 @@ const Sketch = () => {
 
   const sketch = useCallback((p: p5) => {
     p.setup = () => {
-      const cnv = p.createCanvas(800, 600);
+      const cnv = p.createCanvas(800, 1000);
       cnv.id("main-canvas");
-      p.colorMode(p.HSB, 450, 150, 150, 100);
+
       p.blendMode(p.ADD);
 
       matterRef.current.engine = Matter.Engine.create();
       matterRef.current.world = matterRef.current.engine.world;
-      matterRef.current.engine.gravity.y = 0.8;
+      matterRef.current.engine.gravity.y = 0.9;
 
-      matterRef.current.ground = Matter.Bodies.rectangle(p.width / 2, p.height - 20, p.width, 40, { isStatic: true }); // ✅ 바닥 전체로
-      Matter.World.add(matterRef.current.world, matterRef.current.ground);
+      // 1. 사발 모양 ground 구성
+const width = p.width;
+const height = p.height;
+
+// 👄 U자형 입모양 ground vertices 생성
+const curvePoints = [];
+const segments = 20;
+const curveDepth = 10;
+
+for (let i = 0; i <= segments; i++) {
+  const x = (width / segments) * i;
+  const t = (i / segments - 0.5) * 2; // -1 to 1
+  const y = height - 50 - (1 - t * t) * curveDepth; // 포물선 공식으로 U자
+  curvePoints.push({ x, y });
+}
+
+// 끝 양옆을 밑으로 닫기
+curvePoints.push({ x: width, y: height + 100 });
+curvePoints.push({ x: 0, y: height + 100 });
+
+matterRef.current.ground = Matter.Bodies.fromVertices(
+  width / 2,
+  height - 50,
+  [curvePoints],
+  {
+    isStatic: true,
+    label: "ground",
+    render: { visible: false },
+  },
+  true
+);
+
+Matter.World.add(matterRef.current.world, matterRef.current.ground);
+
+
+      // ✅ Add stage trigger sensor at adjusted height
+      matterRef.current.stageTrigger = Matter.Bodies.rectangle(p.width / 2, 700, p.width, 10, {
+        isStatic: true,
+        isSensor: true,
+        label: "stageTrigger",
+      });
+      Matter.World.add(matterRef.current.world, matterRef.current.stageTrigger);
+
+      Matter.Events.on(matterRef.current.engine, "collisionStart", (event: any) => {
+        event.pairs.forEach((pair: any) => {
+          const labels = [pair.bodyA.label, pair.bodyB.label];
+          if (labels.includes("stageTrigger") && labels.includes("userShape")) {
+            touchingSinceRef.current = Date.now();
+          }
+        });
+      });
+
+      Matter.Events.on(matterRef.current.engine, "collisionEnd", (event: any) => {
+        event.pairs.forEach((pair: any) => {
+          const labels = [pair.bodyA.label, pair.bodyB.label];
+          if (labels.includes("stageTrigger") && labels.includes("userShape")) {
+            touchingSinceRef.current = null;
+          }
+        });
+      });
 
       for (let i = 0; i < 200; i++) {
         backgroundStars.current.push({
           x: Math.random() * p.width,
-          y: Math.random() * p.height,
+          y: Math.random() * 1000,
           size: Math.random() * 2,
         });
       }
@@ -67,11 +129,22 @@ const Sketch = () => {
     p.draw = () => {
       if (!matterRef.current.engine) return;
 
-      p.background(10, 10, 10);
-
+      p.background(10, 10, 20, 100);
       p.blendMode(p.ADD);
-
       Matter.Engine.update(matterRef.current.engine);
+
+      if (touchingSinceRef.current && !stageClearRef.current) {
+        const elapsed = Date.now() - touchingSinceRef.current;
+        if (elapsed >= 2000) {
+          stageClearRef.current = true;
+          console.log("🎉 Stage Clear!");
+        }
+      }
+
+      // draw stage trigger line
+      p.stroke(255, 255, 100, 80);
+      p.strokeWeight(2);
+      p.line(0, 700, p.width, 700);
 
       for (const fw of fallingWords.current) {
         fw.y += fw.speed;
@@ -88,15 +161,33 @@ const Sketch = () => {
         p.pop();
       }
 
-      fallingWords.current = fallingWords.current.filter(w => w.y < p.height + 50);
+      if (matterRef.current.ground) {
+        const groundY = matterRef.current.ground.position.y;
+        fallingWords.current = fallingWords.current.filter(w => w.y < groundY + 20);
+      }
 
-      p.blendMode(p.NORMAL);
+      p.blendMode(p.BLEND);
       if (matterRef.current.ground) {
         p.noStroke();
         p.fill(30, 20, 40);
         p.rectMode(p.CENTER);
-        p.rect(matterRef.current.ground.position.x, matterRef.current.ground.position.y, p.width, 40); // ✅ 수정됨
+        p.rect(matterRef.current.ground.position.x, matterRef.current.ground.position.y, p.width, 40);
       }
+
+      // draw all 3 ground bodies
+
+if (matterRef.current.ground) {
+  const vertices = matterRef.current.ground.vertices;
+  p.noStroke();
+  p.fill(30, 20, 40);
+  p.beginShape();
+  for (const v of vertices) {
+    p.vertex(v.x, v.y);
+  }
+  p.endShape(p.CLOSE);
+}
+
+
 
       p.blendMode(p.ADD);
       pointsRef.current.forEach((pt, i) => {
@@ -144,7 +235,6 @@ const Sketch = () => {
           if (v.y > p.height) {
             triggerGameOver(p);
           }
-
           p.push();
           p.translate(v.x, v.y);
           p.fill(255, 255, 255, 160);
@@ -154,7 +244,7 @@ const Sketch = () => {
         }
       }
 
-      p.blendMode(p.NORMAL);
+      p.blendMode(p.BLEND);
       p.noStroke();
       p.fill(255);
       p.textSize(24);
@@ -167,6 +257,13 @@ const Sketch = () => {
         p.textSize(40);
         p.textAlign(p.CENTER);
         p.text("Game Over", p.width / 2, p.height / 2);
+      }
+
+      if (stageClearRef.current) {
+        p.fill(100, 255, 100);
+        p.textSize(40);
+        p.textAlign(p.CENTER);
+        p.text("Stage Clear!", p.width / 2, p.height / 2 + 60);
       }
     };
 
@@ -188,24 +285,31 @@ const Sketch = () => {
 
   const createShape = useCallback(() => {
     if (!matterRef.current.world || pointsRef.current.length !== 4) return;
+
     const centerX = pointsRef.current.reduce((sum, p) => sum + p.x, 0) / 4;
     const centerY = pointsRef.current.reduce((sum, p) => sum + p.y, 0) / 4;
+
     const scaled = pointsRef.current.map(p => ({
-      x: centerX + (p.x - centerX),
-      y: centerY + (p.y - centerY)
+      x: centerX + (p.x - centerX) * 0.6,
+      y: centerY + (p.y - centerY) * 0.6,
     }));
+
     const body = Matter.Bodies.fromVertices(centerX, centerY, [scaled], {
       restitution: 0.1,
       friction: 0.6,
       frictionStatic: 0.8,
       frictionAir: 0.02,
+      label: "userShape"
     });
+
     Matter.World.add(matterRef.current.world, body);
     shapesRef.current.push(body);
 
     const averageHeight = pointsRef.current.reduce((sum, p) => sum + p.y, 0) / 4;
-    const shapeScore = Math.max(1, Math.floor((600 - averageHeight) / 10));
+    const clampedHeight = Math.min(averageHeight, 800);
+    const shapeScore = Math.max(1, Math.floor((1000 - clampedHeight) / 10));
     setScore(prev => prev + shapeScore);
+
     setPoints([]);
     setInputWords([]);
   }, [points]);
@@ -214,7 +318,11 @@ const Sketch = () => {
     if (gameOver || !wordInput.trim()) return;
     const word = wordInput.trim();
     setWordInput("");
-    const position = [Math.random() * 600 + 100, Math.random() * 300 + 100];
+
+    const position = [
+      Math.random() * 600 + 100,
+      Math.random() * 200 + 100,
+    ];
     const newPoint = { x: position[0], y: position[1] };
     setPoints(prev => [...prev, newPoint]);
     setInputWords(prev => [...prev, word]);
@@ -250,7 +358,7 @@ const Sketch = () => {
   }, [sketch]);
 
   return (
-    <div className="flex flex-col items-center justify-center h-screen bg-black">
+    <div className="flex flex-col items-center justify-center min-h-screen bg-black">
       <div className="w-full flex justify-center">
         <div ref={canvasRef} className="z-0" />
       </div>
