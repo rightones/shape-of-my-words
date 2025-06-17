@@ -11,13 +11,12 @@ load_dotenv()
 
 class OpenRouterClient:
     def __init__(self, api_key: Optional[str] = None):
+        # Ollama는 API 키가 필요 없지만 호환성을 위해 유지
         self.api_key = api_key or os.getenv("OPENROUTER_API_KEY")
-        self.base_url = "https://openrouter.ai/api/v1"
+        self.base_url = "http://192.168.1.10:11434/v1"  # Ollama API 엔드포인트
+        self.model = "gemma3:4b"  # 사용할 모델
         self.headers = {
-            "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
-            "HTTP-Referer": "http://localhost:3000",  # 프론트엔드 URL
-            "X-Title": "Shape of My Words",
         }
 
     def generate_words_streaming(
@@ -34,10 +33,6 @@ class OpenRouterClient:
         Yields:
             생성된 단어들의 배치 리스트
         """
-        if not self.api_key:
-            raise ValueError(
-                "OpenRouter API 키가 설정되지 않았습니다. OPENROUTER_API_KEY 환경변수를 설정해주세요."
-            )
 
         # 배치별로 다른 접근 방식 사용
         variety_prompts = [
@@ -74,10 +69,11 @@ class OpenRouterClient:
 """
 
         payload = {
-            "model": "google/gemma-3-27b-it:free",
+            "model": self.model,
             "messages": [{"role": "user", "content": prompt}],
             "max_tokens": 2000,
             "temperature": 0.9 + (batch_number * 0.1),  # 배치마다 temperature 증가
+            "stream": False,
         }
 
         try:
@@ -97,10 +93,10 @@ class OpenRouterClient:
                 if words:
                     yield words[:batch_size]
             else:
-                raise Exception("OpenRouter API 응답에서 단어를 찾을 수 없습니다.")
+                raise Exception("Ollama API 응답에서 단어를 찾을 수 없습니다.")
 
         except requests.exceptions.RequestException as e:
-            raise Exception(f"OpenRouter API 호출 실패: {str(e)}")
+            raise Exception(f"Ollama API 호출 실패: {str(e)}")
         except Exception as e:
             raise Exception(f"단어 생성 중 오류 발생: {str(e)}")
 
@@ -115,10 +111,6 @@ class OpenRouterClient:
         Returns:
             생성된 단어들의 리스트
         """
-        if not self.api_key:
-            raise ValueError(
-                "OpenRouter API 키가 설정되지 않았습니다. OPENROUTER_API_KEY 환경변수를 설정해주세요."
-            )
 
         prompt = f"""
 {topic_prompt}
@@ -137,10 +129,11 @@ class OpenRouterClient:
 """
 
         payload = {
-            "model": "google/gemma-3-27b-it:free",  # 또는 다른 모델 선택
+            "model": self.model,
             "messages": [{"role": "user", "content": prompt}],
             "max_tokens": 4000,
             "temperature": 0.7,
+            "stream": False,
         }
 
         try:
@@ -159,10 +152,10 @@ class OpenRouterClient:
                 words = self._parse_words_from_response(content)
                 return words[:count]  # 요청한 개수만큼만 반환
             else:
-                raise Exception("OpenRouter API 응답에서 단어를 찾을 수 없습니다.")
+                raise Exception("Ollama API 응답에서 단어를 찾을 수 없습니다.")
 
         except requests.exceptions.RequestException as e:
-            raise Exception(f"OpenRouter API 호출 실패: {str(e)}")
+            raise Exception(f"Ollama API 호출 실패: {str(e)}")
         except Exception as e:
             raise Exception(f"단어 생성 중 오류 발생: {str(e)}")
 
@@ -204,16 +197,13 @@ class OpenRouterClient:
         Returns:
             생성된 텍스트
         """
-        if not self.api_key:
-            raise ValueError(
-                "OpenRouter API 키가 설정되지 않았습니다. OPENROUTER_API_KEY 환경변수를 설정해주세요."
-            )
 
         payload = {
-            "model": "google/gemma-3-27b-it:free",
+            "model": self.model,
             "messages": [{"role": "user", "content": prompt}],
             "max_tokens": max_tokens,
             "temperature": temperature,
+            "stream": False,
         }
 
         try:
@@ -230,9 +220,9 @@ class OpenRouterClient:
             if "choices" in result and len(result["choices"]) > 0:
                 return result["choices"][0]["message"]["content"]
             else:
-                raise Exception("OpenRouter API 응답에서 텍스트를 찾을 수 없습니다.")
+                raise Exception("Ollama API 응답에서 텍스트를 찾을 수 없습니다.")
 
         except requests.exceptions.RequestException as e:
-            raise Exception(f"OpenRouter API 호출 실패: {str(e)}")
+            raise Exception(f"Ollama API 호출 실패: {str(e)}")
         except Exception as e:
             raise Exception(f"텍스트 생성 중 오류 발생: {str(e)}")
