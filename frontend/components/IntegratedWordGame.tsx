@@ -39,7 +39,8 @@ const IntegratedWordGame: React.FC<IntegratedWordGameProps> = ({ onBack }) => {
         engine: any | null;
         world: any | null;
         ground: any | null;
-    }>({ engine: null, world: null, ground: null });
+        stageTrigger: any | null;
+    }>({ engine: null, world: null, ground: null, stageTrigger: null });
 
     // 동적 import를 위한 refs
     const p5Lib = useRef<any>(null);
@@ -368,6 +369,10 @@ const IntegratedWordGame: React.FC<IntegratedWordGameProps> = ({ onBack }) => {
         });
     }, []);
 
+    // 스테이지 클리어 상태 추가 - 주석처리
+    // const touchingSinceRef = useRef<number | null>(null);
+    // const stageClearRef = useRef(false);
+
     // p5.js 스케치
     const sketch = useCallback(
         (p: any) => {
@@ -377,23 +382,76 @@ const IntegratedWordGame: React.FC<IntegratedWordGameProps> = ({ onBack }) => {
 
                 if (!MatterLib.current) return;
 
+                // ADD 블렌드 모드 적용
+                p.blendMode(p.ADD);
+
                 matterRef.current.engine = MatterLib.current.Engine.create();
                 matterRef.current.world = matterRef.current.engine.world;
-                matterRef.current.engine.gravity.y = 1;
+                matterRef.current.engine.gravity.y = 0.9;
 
-                matterRef.current.ground = MatterLib.current.Bodies.rectangle(
-                    p.width / 2,
-                    p.height - 20,
-                    p.width / 2,
-                    40,
+                // U자형 사발 모양 ground 구성
+                const width = p.width;
+                const height = p.height;
+
+                // U자형 입모양 ground vertices 생성
+                const curvePoints = [];
+                const segments = 20;
+                const curveDepth = 15;
+
+                for (let i = 0; i <= segments; i++) {
+                    const x = (width / segments) * i;
+                    const t = (i / segments - 0.5) * 2; // -1 to 1
+                    const y = height - 60 - (1 - t * t) * curveDepth; // 포물선 공식으로 U자
+                    curvePoints.push({ x, y });
+                }
+
+                // 끝 양옆을 밑으로 닫기
+                curvePoints.push({ x: width, y: height + 100 });
+                curvePoints.push({ x: 0, y: height + 100 });
+
+                matterRef.current.ground = MatterLib.current.Bodies.fromVertices(
+                    width / 2,
+                    height - 60,
+                    [curvePoints],
                     {
                         isStatic: true,
+                        label: "ground",
+                        render: { visible: false },
                     },
+                    true,
                 );
+
                 MatterLib.current.World.add(matterRef.current.world, matterRef.current.ground);
 
+                // 스테이지 클리어 트리거 라인 추가 - 주석처리
+                // matterRef.current.stageTrigger = MatterLib.current.Bodies.rectangle(p.width / 2, 400, p.width, 10, {
+                //     isStatic: true,
+                //     isSensor: true,
+                //     label: "stageTrigger",
+                // });
+                // MatterLib.current.World.add(matterRef.current.world, matterRef.current.stageTrigger);
+
+                // 충돌 이벤트 처리 - 주석처리
+                // MatterLib.current.Events.on(matterRef.current.engine, "collisionStart", (event: any) => {
+                //     event.pairs.forEach((pair: any) => {
+                //         const labels = [pair.bodyA.label, pair.bodyB.label];
+                //         if (labels.includes("stageTrigger") && labels.includes("userShape")) {
+                //             touchingSinceRef.current = Date.now();
+                //         }
+                //     });
+                // });
+
+                // MatterLib.current.Events.on(matterRef.current.engine, "collisionEnd", (event: any) => {
+                //     event.pairs.forEach((pair: any) => {
+                //         const labels = [pair.bodyA.label, pair.bodyB.label];
+                //         if (labels.includes("stageTrigger") && labels.includes("userShape")) {
+                //             touchingSinceRef.current = null;
+                //         }
+                //     });
+                // });
+
                 // 배경 별들
-                for (let i = 0; i < 200; i++) {
+                for (let i = 0; i < 100; i++) {
                     backgroundStars.current.push({
                         x: Math.random() * p.width,
                         y: Math.random() * p.height,
@@ -405,14 +463,49 @@ const IntegratedWordGame: React.FC<IntegratedWordGameProps> = ({ onBack }) => {
             p.draw = () => {
                 if (!matterRef.current.engine) return;
 
-                p.background(15, 10, 30);
-                p.noStroke();
-                p.fill(255, 255, 255, 80);
-                backgroundStars.current.forEach((star) => p.circle(star.x, star.y, star.size));
+                // 배경 (sketch.tsx와 동일한 어두운 배경)
+                p.background(10, 10, 20, 100);
+                p.blendMode(p.ADD);
 
                 if (gamePhase === GamePhase.PLAYING && !gameState.isPaused && MatterLib.current) {
                     MatterLib.current.Engine.update(matterRef.current.engine);
                 }
+
+                // 스테이지 클리어 로직 (2초 체류) - 주석처리
+                // if (touchingSinceRef.current && !stageClearRef.current) {
+                //     const elapsed = Date.now() - touchingSinceRef.current;
+                //     if (elapsed >= 2000) {
+                //         stageClearRef.current = true;
+                //         console.log("🎉 Stage Clear!");
+                //         // 스테이지 완료 처리
+                //         setTimeout(() => {
+                //             if (gameState.currentStage < 5) {
+                //                 handleNextStage();
+                //             }
+                //         }, 1000);
+                //     }
+                // }
+
+                // 스테이지 클리어 트리거 라인 그리기 (sketch.tsx와 동일) - 주석처리
+                // p.stroke(255, 255, 100, 80);
+                // p.strokeWeight(2);
+                // p.line(0, 400, p.width, 400);
+
+                // 체류 시간 진행 표시 - 주석처리
+                // if (touchingSinceRef.current) {
+                //     const elapsed = Date.now() - touchingSinceRef.current;
+                //     const progress = Math.min(elapsed / 2000, 1);
+                //     p.stroke(255, 255, 100, 150);
+                //     p.strokeWeight(4);
+                //     p.line(0, 395, p.width * progress, 395);
+                // }
+
+                // 배경 별들 (sketch.tsx 스타일의 반짝임)
+                p.noStroke();
+                backgroundStars.current.forEach((star) => {
+                    p.fill(255, 255, 255, Math.sin(p.frameCount * 0.05 + star.x * 0.01) * 50 + 105);
+                    p.circle(star.x, star.y, star.size);
+                });
 
                 // 떨어지는 단어들 렌더링
                 for (let i = fallingWords.current.length - 1; i >= 0; i--) {
@@ -425,44 +518,17 @@ const IntegratedWordGame: React.FC<IntegratedWordGameProps> = ({ onBack }) => {
                     p.push();
                     p.translate(fw.x, fw.y);
 
-                    // 그림자 효과
+                    // 별 장식 (sketch.tsx 스타일)
+                    p.fill(255, 255, 255, 180);
+                    p.stroke(255, 255, 255, 180);
+                    drawStar(p, 0, 0, 6, 12, 5);
+
+                    // 단어 텍스트 (sketch.tsx 스타일)
+                    p.fill(255, 255, 255, 230);
                     p.noStroke();
-                    p.fill(0, 0, 0, 50);
-                    p.ellipse(3, 3, 100, 40);
-
-                    // 단어 배경 (그라데이션 효과)
-                    p.fill(255, 255, 255, fw.opacity * 200);
-                    p.stroke(fw.color);
-                    p.strokeWeight(3);
-                    p.ellipse(0, 0, 100, 40);
-
-                    // 내부 하이라이트
-                    p.noStroke();
-                    p.fill(255, 255, 255, fw.opacity * 100);
-                    p.ellipse(0, -5, 80, 25);
-
-                    // 별 장식 (작게)
-                    p.fill(fw.color);
-                    p.noStroke();
-                    drawStar(p, -35, 0, 3, 6, 5);
-                    drawStar(p, 35, 0, 3, 6, 5);
-
-                    // 단어 텍스트 (테두리 효과)
-                    p.textAlign(p.CENTER, p.CENTER);
-                    p.textSize(fw.size + 2);
-
-                    // 텍스트 그림자
-                    p.fill(0, 0, 0, 100);
-                    p.text(fw.word, 1, 1);
-
-                    // 메인 텍스트
-                    p.fill(50, 50, 50);
-                    p.text(fw.word, 0, 0);
-
-                    // 텍스트 하이라이트
-                    p.fill(255, 255, 255, 150);
-                    p.textSize(fw.size);
-                    p.text(fw.word, 0, -1);
+                    p.textAlign(p.LEFT, p.BOTTOM);
+                    p.textSize(16);
+                    p.text(fw.word, 8, -8);
 
                     p.pop();
 
@@ -472,94 +538,86 @@ const IntegratedWordGame: React.FC<IntegratedWordGameProps> = ({ onBack }) => {
                     }
                 }
 
-                // 바닥
+                // U자형 바닥 그리기 (sketch.tsx 스타일)
+                p.blendMode(p.BLEND);
                 if (matterRef.current.ground) {
+                    const vertices = matterRef.current.ground.vertices;
                     p.noStroke();
                     p.fill(30, 20, 40);
-                    p.rectMode(p.CENTER);
-                    p.rect(matterRef.current.ground.position.x, matterRef.current.ground.position.y, p.width / 2, 40);
+                    p.beginShape();
+                    for (const v of vertices) {
+                        p.vertex(v.x, v.y);
+                    }
+                    p.endShape(p.CLOSE);
                 }
+                p.blendMode(p.ADD);
 
-                // 연결선 먼저 그리기
-                for (let i = 1; i < pointsRef.current.length; i++) {
-                    const prev = pointsRef.current[i - 1];
-                    const curr = pointsRef.current[i];
-                    p.stroke(255, 255, 100, 255);
-                    p.strokeWeight(4);
-                    p.line(prev.x, prev.y, curr.x, curr.y);
-                }
-
-                // 입력된 단어들의 점들 (연결선 위에 그리기)
-
+                // 입력된 점들과 연결선 그리기 (sketch.tsx 스타일)
                 pointsRef.current.forEach((pt, i) => {
-                    // 점 배경 원 (더 크고 진한 배경)
-                    p.noStroke();
-                    p.fill(0, 0, 0, 200);
-                    p.circle(pt.x, pt.y, 50);
-
-                    // 점 외곽 테두리
-                    p.noFill();
-                    p.stroke(255, 255, 255);
-                    p.strokeWeight(3);
-                    p.circle(pt.x, pt.y, 45);
-
-                    // 점 (별 모양) - 더 크고 밝게
                     p.push();
                     p.translate(pt.x, pt.y);
-                    p.fill(255, 255, 0); // 순수 노란색
-                    p.stroke(255, 255, 255);
-                    p.strokeWeight(3);
-                    drawStar(p, 0, 0, 12, 20, 5); // 더 큰 크기
+                    p.fill(255, 255, 255, 180);
+                    p.stroke(255, 255, 255, 200);
+                    drawStar(p, 0, 0, 6, 12, 5);
                     p.pop();
 
-                    // 단어 텍스트 (더 명확하게)
-                    p.fill(255, 255, 255);
-                    p.stroke(0, 0, 0);
-                    p.strokeWeight(2);
+                    // 단어 텍스트 (sketch.tsx 스타일)
+                    p.fill(255, 255, 255, 200);
+                    p.noStroke();
                     p.textAlign(p.CENTER, p.CENTER);
-                    p.textSize(18);
-                    p.text(inputWordsRef.current[i], pt.x, pt.y - 35);
+                    p.textSize(16);
+                    p.text(inputWordsRef.current[i], pt.x, pt.y - 18);
+
+                    // 연결선 그리기 (이전 점과 연결)
+                    if (i > 0) {
+                        const prev = pointsRef.current[i - 1];
+                        p.stroke(160, 180, 255, 120);
+                        p.strokeWeight(1.5);
+                        p.line(prev.x, prev.y, pt.x, pt.y);
+                    }
                 });
 
-                // 4개 점이 모이면 도형 완성
+                // 4개 점이 모이면 도형 완성 (sketch.tsx 스타일)
                 if (pointsRef.current.length === 4) {
                     const first = pointsRef.current[0];
                     const last = pointsRef.current[3];
-                    p.stroke(255, 255, 100, 255); // 밝은 노란색으로 완성선 강조
-                    p.strokeWeight(4); // 두께 증가
+                    p.stroke(160, 180, 255, 120);
+                    p.strokeWeight(1.5);
                     p.line(last.x, last.y, first.x, first.y);
-
-                    // 도형 내부를 반투명으로 채우기
-                    p.fill(255, 255, 100, 50);
-                    p.noStroke();
-                    p.beginShape();
-                    pointsRef.current.forEach((pt) => p.vertex(pt.x, pt.y));
-                    p.endShape(p.CLOSE);
                 }
 
-                // 생성된 도형들
+                // 생성된 도형들 (sketch.tsx 스타일)
                 for (const s of shapesRef.current) {
                     const vertices = s.vertices;
 
-                    // 도형 내부 채우기
-                    p.fill(100, 200, 255, 80);
-                    p.noStroke();
+                    // 도형 테두리
+                    p.noFill();
+                    p.stroke(100, 200, 255, 100);
+                    p.strokeWeight(1.5);
                     p.beginShape();
                     for (const v of vertices) {
                         p.vertex(v.x, v.y);
                     }
                     p.endShape(p.CLOSE);
 
-                    // 도형 테두리
-                    p.noFill();
-                    p.stroke(100, 200, 255, 200);
-                    p.strokeWeight(3);
-                    p.beginShape();
+                    // 각 꼭짓점에 별 그리기 (sketch.tsx 스타일)
                     for (const v of vertices) {
-                        p.vertex(v.x, v.y);
+                        // 화면 아래로 나가면 게임 오버 체크
+                        if (v.y > p.height) {
+                            handleGameOver();
+                        }
+
+                        p.push();
+                        p.translate(v.x, v.y);
+                        p.fill(255, 255, 255, 160);
+                        p.stroke(255, 255, 255, 180);
+                        drawStar(p, 0, 0, 6, 12, 5);
+                        p.pop();
                     }
-                    p.endShape(p.CLOSE);
                 }
+
+                // 블렌드 모드 복원
+                p.blendMode(p.BLEND);
             };
 
             function drawStar(p: any, x: number, y: number, radius1: number, radius2: number, npoints: number) {
@@ -577,7 +635,17 @@ const IntegratedWordGame: React.FC<IntegratedWordGameProps> = ({ onBack }) => {
                 p.endShape(p.CLOSE);
             }
         },
-        [gamePhase, gameState.isPaused, points, inputWords, handleGameOver],
+        [
+            gamePhase,
+            gameState.isPaused,
+            gameState.score,
+            gameState.currentStage,
+            points,
+            inputWords,
+            handleGameOver,
+            handleNextStage,
+            selectedTopic,
+        ],
     );
 
     // 도형 생성
@@ -591,7 +659,13 @@ const IntegratedWordGame: React.FC<IntegratedWordGameProps> = ({ onBack }) => {
             y: centerY + (p.y - centerY),
         }));
 
-        const body = MatterLib.current.Bodies.fromVertices(centerX, centerY, [scaled], { restitution: 0.5 });
+        const body = MatterLib.current.Bodies.fromVertices(centerX, centerY, [scaled], {
+            restitution: 0.1,
+            friction: 0.6,
+            frictionStatic: 0.8,
+            frictionAir: 0.02,
+            label: "userShape",
+        });
         MatterLib.current.World.add(matterRef.current.world, body);
         shapesRef.current.push(body);
 
