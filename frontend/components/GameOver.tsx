@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from "react";
 import { GameStats } from "../types/game";
 import { formatTime } from "../utils/gameConfig";
+import { useUserScore } from "../hooks/useUserScore";
+import Leaderboard from "./Leaderboard";
 
 interface GameOverProps {
     gameStats: GameStats;
@@ -11,6 +13,9 @@ interface GameOverProps {
 const GameOver: React.FC<GameOverProps> = ({ gameStats, onRestart, onMainMenu }) => {
     const [showStats, setShowStats] = useState(false);
     const [animatedScore, setAnimatedScore] = useState(0);
+    const [showLeaderboard, setShowLeaderboard] = useState(false);
+    const [scoreSubmitted, setScoreSubmitted] = useState(false);
+    const { currentUser, submitScore, isLoading } = useUserScore();
 
     useEffect(() => {
         // 통계 표시 애니메이션
@@ -145,8 +150,37 @@ const GameOver: React.FC<GameOverProps> = ({ gameStats, onRestart, onMainMenu })
                     </div>
                 )}
 
+                {/* 점수 제출 버튼 */}
+                {currentUser && !scoreSubmitted && (
+                    <div className="mb-6">
+                        <button
+                            onClick={async () => {
+                                const success = await submitScore(gameStats.totalScore);
+                                if (success) {
+                                    setScoreSubmitted(true);
+                                }
+                            }}
+                            disabled={isLoading}
+                            className="w-full bg-gradient-to-r from-yellow-500 to-orange-600 hover:from-yellow-600 hover:to-orange-700 
+                                     text-white font-bold py-3 px-6 rounded-xl text-lg transition-all duration-300 
+                                     transform hover:scale-105 shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            {isLoading ? "점수 제출 중..." : "점수 제출하기"}
+                        </button>
+                    </div>
+                )}
+
+                {/* 점수 제출 완료 메시지 */}
+                {scoreSubmitted && (
+                    <div className="mb-6 bg-green-500/20 border border-green-500/50 rounded-lg p-4">
+                        <div className="text-green-300 text-center font-medium">
+                            ✅ 점수가 성공적으로 제출되었습니다!
+                        </div>
+                    </div>
+                )}
+
                 {/* 액션 버튼 */}
-                <div className="flex space-x-4 justify-center">
+                <div className="flex flex-wrap gap-3 justify-center">
                     <button
                         onClick={onRestart}
                         className="bg-gradient-to-r from-green-500 to-blue-600 hover:from-green-600 hover:to-blue-700 
@@ -154,6 +188,14 @@ const GameOver: React.FC<GameOverProps> = ({ gameStats, onRestart, onMainMenu })
                                  transform hover:scale-105 shadow-lg hover:shadow-xl"
                     >
                         다시 시작
+                    </button>
+                    <button
+                        onClick={() => setShowLeaderboard(true)}
+                        className="bg-gradient-to-r from-purple-500 to-pink-600 hover:from-purple-600 hover:to-pink-700 
+                                 text-white font-bold py-4 px-8 rounded-xl text-xl transition-all duration-300 
+                                 transform hover:scale-105 shadow-lg hover:shadow-xl"
+                    >
+                        리더보드
                     </button>
                     <button
                         onClick={onMainMenu}
@@ -183,6 +225,9 @@ const GameOver: React.FC<GameOverProps> = ({ gameStats, onRestart, onMainMenu })
                 <div className="absolute top-1/2 left-5 w-16 h-16 bg-pink-400/20 rounded-full blur-xl animate-pulse"></div>
                 <div className="absolute top-1/4 right-5 w-24 h-24 bg-indigo-400/20 rounded-full blur-xl animate-pulse"></div>
             </div>
+
+            {/* 리더보드 모달 */}
+            <Leaderboard isOpen={showLeaderboard} onClose={() => setShowLeaderboard(false)} />
         </div>
     );
 };

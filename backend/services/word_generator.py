@@ -3,6 +3,7 @@ import os
 from typing import List, Dict, Optional, Generator, Set
 from .openrouter import OpenRouterClient
 import time
+import re
 
 
 class WordGeneratorService:
@@ -102,6 +103,7 @@ class WordGeneratorService:
     ) -> Generator[List[str], None, None]:
         """
         주제에 대한 단어들을 특정 배치 번호로 스트리밍 방식으로 생성합니다.
+        세션 기반으로 중복 단어를 필터링합니다.
 
         Args:
             topic_id: 주제 ID
@@ -111,19 +113,24 @@ class WordGeneratorService:
         Yields:
             생성된 단어들의 배치
         """
-        # 주제 확인
         topic = self.get_topic_by_id(topic_id)
         if not topic:
             raise ValueError(f"존재하지 않는 주제 ID: {topic_id}")
 
+        session_key = self._start_streaming_session(f"{topic_id}_batch_{batch_number}")
+
         try:
-            # OpenRouter 클라이언트를 통해 스트리밍 생성
             for word_batch in self.openrouter_client.generate_words_streaming(
                 topic["prompt"], batch_size, batch_number
             ):
-                yield word_batch
+                filtered_words = self._filter_duplicate_words(session_key, word_batch)
+                if filtered_words:
+                    yield filtered_words
         except Exception as e:
             raise Exception(f"스트리밍 단어 생성 실패: {str(e)}")
+        finally:
+            if session_key in self._streaming_sessions:
+                del self._streaming_sessions[session_key]
 
     def generate_words_streaming(
         self, topic_id: str, batch_size: int = 20
@@ -189,7 +196,7 @@ class WordGeneratorService:
             if cached_data and len(cached_data.get("words", [])) >= count:
                 return {
                     "topic_id": topic_id,
-                    "topic_name": topic["name"],
+                    "topic_name": topic["topic"],
                     "words": cached_data["words"][:count],
                     "total_count": len(cached_data["words"][:count]),
                     "from_cache": True,
@@ -198,17 +205,22 @@ class WordGeneratorService:
 
         # 새로 생성
         try:
-            words = self.openrouter_client.generate_words(topic["prompt"], count)
+            generated_words = self.openrouter_client.generate_words(
+                topic["prompt"], count
+            )
+
+            # 중복 단어 제거
+            unique_words = list(dict.fromkeys(generated_words))
 
             # 캐시에 저장
-            if words:
-                self._save_words_to_cache(topic_id, words)
+            if unique_words:
+                self._save_words_to_cache(topic_id, unique_words)
 
             return {
                 "topic_id": topic_id,
-                "topic_name": topic["name"],
-                "words": words,
-                "total_count": len(words),
+                "topic_name": topic["topic"],
+                "words": unique_words,
+                "total_count": len(unique_words),
                 "from_cache": False,
                 "generated_at": time.time(),
             }
@@ -231,104 +243,88 @@ class WordGeneratorService:
 
     def generate_dynamic_topics(
         self, theme: str, difficulty: str, count: int = 6
-    ) -> Dict:
+    ) -> list[dict]:
         """
         LLM을 통해 동적으로 주제들을 생성합니다.
-
-        Args:
-            theme: 전체적인 테마 (예: "판타지", "과학", "일상생활")
-            difficulty: 난이도 ("easy", "medium", "hard")
-            count: 생성할 주제 개수
-
-        Returns:
-            생성된 주제들과 메타데이터를 포함한 딕셔너리
         """
-        try:
-            # 난이도별 설명
-            difficulty_descriptions = {
-                "easy": "초보자도 쉽게 이해할 수 있는 기본적인",
-                "medium": "적당한 수준의 도전적인",
-                "hard": "고급 수준의 복잡하고 전문적인",
-            }
+        prompt = f"""
+당신은 창의적인 단어 게임 주제 생성기입니다.
+다음 조건에 맞춰 {count}개의 새로운 게임 주제를 생성해주세요:
 
-            difficulty_desc = difficulty_descriptions.get(difficulty, "적당한 수준의")
+1.  **전체 테마:** {theme}
+2.  **난이도:** {difficulty}
+3.  **출력 형식:** JSON 배열. 각 객체는 다음 키를 포함해야 합니다:
+    *   `id`: 영어로 된 고유한 ID (예: `fantasy_world`, `mysterious_forest`)
+    *   `topic`: 사용자가에게 보여질 주제 구절. 이름과 간단한 설명을 결합한 형태입니다. (예: "신비로운 숲 (고대 나무와 숨겨진 생물)")
+    *   `prompt`: 단어 생성을 위한 LLM 프롬프트. 주제에 대한 상세한 설명과 생성할 단어의 종류를 포함합니다.
 
-            # 주제 생성을 위한 프롬프트
-            prompt = f"""
-다음 조건에 맞는 {count}개의 게임 주제를 생성해주세요:
+JSON 형식 예시:
+```json
+[
+  {{
+    "id": "example_topic_1",
+    "topic": "예시 주제 1 (설명)",
+    "prompt": "예시 주제 1에 대한 상세 설명과 함께 관련된 단어들을 생성해주세요."
+  }},
+  {{
+    "id": "example_topic_2",
+    "topic": "예시 주제 2 (설명)",
+    "prompt": "예시 주제 2에 대한 상세 설명과 함께 관련된 단어들을 생성해주세요."
+  }}
+]
+```
 
-테마: {theme}
-난이도: {difficulty_desc}
-
-각 주제는 다음 형식으로 작성해주세요:
-1. 주제명: 간단하고 명확한 한국어 이름
-2. 설명: 해당 주제에 대한 간단한 설명 (1-2문장)
-3. 단어 생성 프롬프트: 해당 주제와 관련된 다양한 한국어 단어들을 생성하기 위한 상세한 지시문
-
-응답은 반드시 다음 JSON 형식으로만 작성해주세요:
-{{
-  "topics": [
-    {{
-      "name": "주제명",
-      "description": "주제 설명",
-      "prompt": "단어 생성을 위한 상세한 프롬프트"
-    }}
-  ]
-}}
-
-주제들은 서로 다르고 독창적이어야 하며, {theme} 테마와 관련이 있어야 합니다.
+위의 형식에 맞춰 JSON 데이터만 생성해주세요. 설명이나 다른 텍스트는 포함하지 마세요.
 """
+        try:
+            response_text = self.openrouter_client.generate_text(
+                prompt, max_tokens=2000, temperature=0.8
+            )
+            # 마크다운 코드 블록 제거 및 JSON 파싱
+            clean_json_str = re.sub(r"```json\n|```", "", response_text).strip()
+            generated_topics = json.loads(clean_json_str)
+            
+            # 생성된 주제에 현재 토픽 목록에 없는 것만 추가
+            new_topics = []
+            for topic in generated_topics:
+                if topic.get("id") and topic.get("id") not in self.topics:
+                    # 필수 필드 검사
+                    if all(k in topic for k in ["id", "topic", "prompt"]):
+                        new_topics.append(topic)
 
-            # OpenRouter를 통해 주제 생성
-            response = self.openrouter_client.generate_text(prompt)
+            return new_topics
 
-            # JSON 파싱
-            import json
-            import re
-
-            # JSON 부분만 추출
-            json_match = re.search(r"\{.*\}", response, re.DOTALL)
-            if not json_match:
-                raise ValueError("유효한 JSON 응답을 받지 못했습니다.")
-
-            json_str = json_match.group()
-            topics_data = json.loads(json_str)
-
-            if "topics" not in topics_data:
-                raise ValueError("응답에 'topics' 키가 없습니다.")
-
-            # 주제들을 게임 스테이지 형태로 변환
-            generated_topics = []
-            for i, topic in enumerate(topics_data["topics"][:count]):
-                topic_id = f"dynamic_{theme}_{difficulty}_{i+1}_{int(time.time())}"
-
-                generated_topic = {
-                    "id": topic_id,
-                    "name": topic["name"],
-                    "description": topic["description"],
-                    "prompt": topic["prompt"],
-                    "difficulty": difficulty,
-                    "stage": i + 1,
-                    "theme": theme,
-                    "is_dynamic": True,
-                }
-
-                generated_topics.append(generated_topic)
-
-                # 동적 주제를 임시로 메모리에 저장
-                self.topics[topic_id] = generated_topic
-
-            return {
-                "topics": generated_topics,
-                "theme": theme,
-                "difficulty": difficulty,
-                "generated_at": time.time(),
-                "total_count": len(generated_topics),
-            }
-
+        except json.JSONDecodeError:
+            print(f"JSON 파싱 실패: {response_text}")
+            return []
         except Exception as e:
             raise Exception(f"동적 주제 생성 실패: {str(e)}")
 
     def add_dynamic_topic(self, topic_data: Dict):
-        """동적으로 생성된 주제를 메모리에 추가합니다."""
+        """
+        새로운 동적 주제를 topics.json에 추가하고 캐시를 생성합니다.
+
+        Args:
+            topic_data: 추가할 주제 데이터 (id, topic, prompt 포함)
+        """
+        # 필수 필드 확인
+        if not all(k in topic_data for k in ["id", "topic", "prompt"]):
+            raise ValueError("주제 데이터에 필수 필드가 누락되었습니다.")
+
+        # 이미 존재하는 주제인지 확인
+        if topic_data["id"] in self.topics:
+            raise ValueError(f"이미 존재하는 주제 ID: {topic_data['id']}")
+
+        # 새 주제 추가
         self.topics[topic_data["id"]] = topic_data
+
+        # topics.json 파일 업데이트
+        try:
+            with open(self.topics_file, "r+", encoding="utf-8") as f:
+                data = json.load(f)
+                data["topics"].append(topic_data)
+                f.seek(0)
+                json.dump(data, f, ensure_ascii=False, indent=2)
+                f.truncate()
+        except Exception as e:
+            raise Exception(f"topics.json 파일 업데이트 실패: {str(e)}")

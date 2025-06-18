@@ -215,7 +215,35 @@ const IntegratedWordGame: React.FC<IntegratedWordGameProps> = ({ onBack }) => {
         }, currentStageConfig.wordSpawnRate);
     }, [gamePhase, gameState.isPaused, addFallingWord, currentStageConfig.wordSpawnRate]);
 
-    // 주제 선택 핸들러
+    // 스테이지 선택 핸들러 (StageSelector용)
+    const handleStageSelect = useCallback(
+        async (topicId: string, difficulty: string, stage: number) => {
+            setSelectedTopic(topicId);
+
+            // 선택된 난이도와 스테이지에 따라 게임 설정 조정
+            const stageConfig = getStageConfig(stage);
+            setCurrentStageConfig(stageConfig);
+            setGameState((prev) => ({
+                ...prev,
+                currentStage: stage,
+                targetShapes: stageConfig.targetShapes,
+            }));
+
+            try {
+                // 난이도에 따른 단어 생성 파라미터 조정
+                const batchSize = difficulty === "easy" ? 20 : difficulty === "medium" ? 30 : 40;
+                const batchCount = 7;
+
+                startStreaming(topicId, batchSize, batchCount);
+                setGamePhase(GamePhase.TOPIC_SELECTION);
+            } catch (error) {
+                console.error("단어 생성 실패:", error);
+            }
+        },
+        [startStreaming],
+    );
+
+    // 주제 선택 핸들러 (TopicSelector용)
     const handleTopicSelect = useCallback(
         async (topicId: string) => {
             setSelectedTopic(topicId);
@@ -761,7 +789,7 @@ const IntegratedWordGame: React.FC<IntegratedWordGameProps> = ({ onBack }) => {
     // 게임 페이즈별 렌더링
     switch (gamePhase) {
         case GamePhase.STAGE_SELECTION:
-            return <StageSelector topics={topics} onTopicSelect={handleTopicSelect} onBack={onBack} />;
+            return <StageSelector topics={topics} onTopicSelect={handleStageSelect} onBack={onBack} />;
 
         case GamePhase.TOPIC_SELECTION:
             return (

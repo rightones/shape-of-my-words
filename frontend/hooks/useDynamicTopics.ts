@@ -1,22 +1,5 @@
 import { useState, useCallback } from "react";
-
-interface Topic {
-    id: string;
-    name: string;
-    description: string;
-    difficulty?: string;
-    stage?: number;
-    theme?: string;
-    is_dynamic?: boolean;
-}
-
-interface DynamicTopicsResponse {
-    topics: Topic[];
-    theme: string;
-    difficulty: string;
-    generated_at: number;
-    total_count: number;
-}
+import { Topic } from "@/types/words";
 
 interface UseDynamicTopicsReturn {
     generateTopics: (theme: string, difficulty: string, count?: number) => Promise<Topic[]>;
@@ -51,8 +34,8 @@ export const useDynamicTopics = (): UseDynamicTopicsReturn => {
                     throw new Error(errorData.error || "주제 생성에 실패했습니다.");
                 }
 
-                const data: DynamicTopicsResponse = await response.json();
-                return data.topics;
+                const data: Topic[] = await response.json();
+                return data;
             } catch (err) {
                 const errorMessage = err instanceof Error ? err.message : "알 수 없는 오류가 발생했습니다.";
                 setError(errorMessage);

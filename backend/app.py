@@ -5,6 +5,9 @@ import numpy as np
 import torch
 from flasgger import Swagger  # Swagger 추가
 from services.word_generator import WordGeneratorService
+from services.user_service import UserService
+from services.score_service import ScoreService
+from models import get_db, create_tables
 import json
 import time
 
@@ -49,6 +52,19 @@ app.config["SWAGGER"] = {
     "openapi": "3.0.2",
     "doc_expansion": "list",  # 'none', 'list', 'full'
     "specs_route": "/apidocs/",  # URL for the swagger.json spec
+    "components": {
+        "schemas": {
+            "Topic": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "string", "description": "고유 ID"},
+                    "topic": {"type": "string", "description": "주제 구절 (이름과 설명 통합)"},
+                    "prompt": {"type": "string", "description": "단어 생성을 위한 LLM 프롬프트"},
+                },
+                "required": ["id", "topic", "prompt"],
+            }
+        }
+    },
 }
 swagger = Swagger(app)  # Initialize Flasgger
 
@@ -78,6 +94,13 @@ with app.app_context():
         )
     else:
         print("PCA model (EN/KO) loaded or trained.")
+
+    # 3. Initialize database
+    try:
+        create_tables()
+        print("Database tables initialized.")
+    except Exception as e:
+        print(f"Database initialization failed: {e}")
 
     print("Model loading process finished.")
 
@@ -230,29 +253,10 @@ def get_topics():
                             topics:
                                 type: array
                                 items:
-                                    type: object
-                                    properties:
-                                        id:
-                                            type: string
-                                            description: 주제 ID
-                                        name:
-                                            type: string
-                                            description: 주제 이름
-                                        description:
-                                            type: string
-                                            description: 주제 설명
-                                    example:
-                                        id: "nature"
-                                        name: "자연"
-                                        description: "자연과 관련된 단어들"
-        500:
-            description: 서버 오류
+                                    $ref: '#/components/schemas/Topic'
     """
-    try:
-        topics = word_generator.get_topics()
-        return jsonify({"topics": topics})
-    except Exception as e:
-        return jsonify({"error": f"주제 목록 조회 실패: {str(e)}"}), 500
+    topics = word_generator.get_topics()
+    return jsonify({"topics": topics})
 
 
 @app.route("/topics/generate", methods=["POST"])
@@ -502,7 +506,7 @@ def stream_words(topic_id):
                 return
 
             # 시작 이벤트 전송
-            yield f"data: {json.dumps({'type': 'start', 'topic_name': topic['name'], 'total_batches': total_batches})}\n\n"
+            yield f"data: {json.dumps({'type': 'start', 'topic_name': topic['topic'], 'total_batches': total_batches})}\n\n"
 
             all_words = []
 
@@ -560,6 +564,281 @@ def stream_words(topic_id):
             "Access-Control-Allow-Headers": "Cache-Control",
         },
     )
+
+
+# === 유저 및 점수 관련 API ===
+
+
+@app.route("/api/users", methods=["POST"])
+def create_user():
+    """
+    새로운 유저를 생성합니다.
+    ---
+    requestBody:
+        description: 유저 생성 정보
+        required: true
+        content:
+            application/json:
+                schema:
+                    type: object
+                    properties:
+                        nickname:
+                            type: string
+                            description: 유저 닉네임
+                            example: "게이머123"
+                    required:
+                        - nickname
+    responses:
+        200:
+            description: 유저 생성 성공 (기존 유저 반환 포함)
+            content:
+                application/json:
+                    schema:
+                        type: object
+                        properties:
+                            id:
+                                type: integer
+                            nickname:
+                                type: string
+                            created_at:
+                                type: string
+                                format: date-time
+        400:
+            description: 잘못된 요청
+        500:
+            description: 서버 오류
+    """
+    try:
+        data = request.get_json()
+        if not data or "nickname" not in data:
+            return jsonify({"error": "닉네임이 필요합니다."}), 400
+
+        nickname = data["nickname"].strip()
+        if not nickname:
+            return jsonify({"error": "유효한 닉네임을 입력해주세요."}), 400
+
+        # 데이터베이스 세션 생성
+        db = next(get_db())
+        try:
+            user_service = UserService(db)
+            user = user_service.create_user(nickname)
+
+            if user:
+                return jsonify(user.to_dict()), 200
+            else:
+                return jsonify({"error": "유저 생성에 실패했습니다."}), 500
+        finally:
+            db.close()
+
+    except Exception as e:
+        return jsonify({"error": f"유저 생성 실패: {str(e)}"}), 500
+
+
+@app.route("/api/scores", methods=["POST"])
+def add_score():
+    """
+    점수를 추가합니다.
+    ---
+    requestBody:
+        description: 점수 추가 정보
+        required: true
+        content:
+            application/json:
+                schema:
+                    type: object
+                    properties:
+                        nickname:
+                            type: string
+                            description: 유저 닉네임
+                            example: "게이머123"
+                        score:
+                            type: integer
+                            description: 점수
+                            example: 1250
+                    required:
+                        - nickname
+                        - score
+    responses:
+        200:
+            description: 점수 추가 성공
+            content:
+                application/json:
+                    schema:
+                        type: object
+                        properties:
+                            id:
+                                type: integer
+                            user_id:
+                                type: integer
+                            value:
+                                type: integer
+                            created_at:
+                                type: string
+                                format: date-time
+                            nickname:
+                                type: string
+        400:
+            description: 잘못된 요청
+        500:
+            description: 서버 오류
+    """
+    try:
+        data = request.get_json()
+        if not data or "nickname" not in data or "score" not in data:
+            return jsonify({"error": "닉네임과 점수가 필요합니다."}), 400
+
+        nickname = data["nickname"].strip()
+        score_value = data["score"]
+
+        if not nickname:
+            return jsonify({"error": "유효한 닉네임을 입력해주세요."}), 400
+
+        if not isinstance(score_value, int) or score_value < 0:
+            return jsonify({"error": "점수는 0 이상의 정수여야 합니다."}), 400
+
+        # 데이터베이스 세션 생성
+        db = next(get_db())
+        try:
+            score_service = ScoreService(db)
+            score = score_service.add_score(nickname, score_value)
+
+            if score:
+                return jsonify(score.to_dict()), 200
+            else:
+                return jsonify({"error": "점수 추가에 실패했습니다."}), 500
+        finally:
+            db.close()
+
+    except Exception as e:
+        return jsonify({"error": f"점수 추가 실패: {str(e)}"}), 500
+
+
+@app.route("/api/leaderboard", methods=["GET"])
+def get_leaderboard():
+    """
+    리더보드를 조회합니다.
+    ---
+    parameters:
+        - name: top
+          in: query
+          required: false
+          schema:
+              type: integer
+              default: 10
+          description: 상위 몇 명까지 조회할지
+    responses:
+        200:
+            description: 리더보드 조회 성공
+            content:
+                application/json:
+                    schema:
+                        type: array
+                        items:
+                            type: object
+                            properties:
+                                rank:
+                                    type: integer
+                                    description: 순위
+                                nickname:
+                                    type: string
+                                    description: 유저 닉네임
+                                score:
+                                    type: integer
+                                    description: 최고 점수
+                                user_id:
+                                    type: integer
+                                    description: 유저 ID
+        500:
+            description: 서버 오류
+    """
+    try:
+        top = request.args.get("top", 10, type=int)
+        if top <= 0:
+            top = 10
+
+        # 데이터베이스 세션 생성
+        db = next(get_db())
+        try:
+            score_service = ScoreService(db)
+            leaderboard = score_service.get_leaderboard(limit=top)
+            return jsonify(leaderboard), 200
+        finally:
+            db.close()
+
+    except Exception as e:
+        return jsonify({"error": f"리더보드 조회 실패: {str(e)}"}), 500
+
+
+@app.route("/api/users/<nickname>/scores", methods=["GET"])
+def get_user_scores(nickname):
+    """
+    특정 유저의 점수 기록을 조회합니다.
+    ---
+    parameters:
+        - name: nickname
+          in: path
+          required: true
+          schema:
+              type: string
+          description: 유저 닉네임
+        - name: limit
+          in: query
+          required: false
+          schema:
+              type: integer
+              default: 10
+          description: 조회할 기록 수
+    responses:
+        200:
+            description: 유저 점수 조회 성공
+            content:
+                application/json:
+                    schema:
+                        type: array
+                        items:
+                            type: object
+                            properties:
+                                id:
+                                    type: integer
+                                user_id:
+                                    type: integer
+                                value:
+                                    type: integer
+                                created_at:
+                                    type: string
+                                    format: date-time
+                                nickname:
+                                    type: string
+        404:
+            description: 유저를 찾을 수 없음
+        500:
+            description: 서버 오류
+    """
+    try:
+        limit = request.args.get("limit", 10, type=int)
+        if limit <= 0:
+            limit = 10
+
+        # 데이터베이스 세션 생성
+        db = next(get_db())
+        try:
+            score_service = ScoreService(db)
+            scores = score_service.get_user_scores(nickname, limit=limit)
+
+            if not scores:
+                # 유저가 존재하는지 확인
+                user_service = UserService(db)
+                user = user_service.get_user_by_nickname(nickname)
+                if not user:
+                    return jsonify({"error": "유저를 찾을 수 없습니다."}), 404
+
+            scores_dict = [score.to_dict() for score in scores]
+            return jsonify(scores_dict), 200
+        finally:
+            db.close()
+
+    except Exception as e:
+        return jsonify({"error": f"유저 점수 조회 실패: {str(e)}"}), 500
 
 
 if __name__ == "__main__":

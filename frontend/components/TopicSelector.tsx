@@ -54,8 +54,7 @@ const TopicSelector: React.FC<TopicSelectorProps> = ({
               }
             `}
                     >
-                        <h3 className="font-semibold text-lg mb-2 text-gray-800">{topic.name}</h3>
-                        <p className="text-sm text-gray-600 leading-relaxed">{topic.description}</p>
+                        <h3 className="font-semibold text-lg text-gray-800">{topic.topic}</h3>
                     </button>
                 ))}
             </div>
@@ -65,7 +64,7 @@ const TopicSelector: React.FC<TopicSelectorProps> = ({
                     <p className="text-gray-600">
                         선택된 주제:{" "}
                         <span className="font-semibold text-blue-600">
-                            {topics.find((t) => t.id === selectedTopic)?.name}
+                            {topics.find((t) => t.id === selectedTopic)?.topic}
                         </span>
                     </p>
                 </div>

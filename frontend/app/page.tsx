@@ -1,7 +1,7 @@
 "use client";
 
-import IntegratedWordGame from "../components/IntegratedWordGame";
+import MainApp from "../components/MainApp";
 
 export default function Home() {
-    return <IntegratedWordGame />;
+    return <MainApp />;
 }
