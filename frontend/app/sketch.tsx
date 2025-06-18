@@ -12,19 +12,18 @@ const Sketch = () => {
   const matterRef = useRef({ engine: null, world: null, ground: null, stageTrigger: null });
   const [score, setScore] = useState(0);
   const [gameOver, setGameOver] = useState(false);
-  const [inputWords, setInputWords] = useState<string[]>([]);
+  const [inputWords, setInputWords] = useState<{ word: string; point: number }[]>([]);
   const [points, setPoints] = useState<{ x: number; y: number }[]>([]);
   const [wordInput, setWordInput] = useState("");
 
   const shapesRef = useRef<Matter.Body[]>([]);
   const scoreRef = useRef(score);
   const gameOverRef = useRef(gameOver);
-  const inputWordsRef = useRef(inputWords);
+  const inputWordsRef = useRef<{ word: string; point: number }[]>([]);
   const pointsRef = useRef(points);
   const backgroundStars = useRef<{ x: number; y: number; size: number }[]>([]);
   const fallingWords = useRef<{ word: string; x: number; y: number; speed: number }[]>([]);
 
-  // New stage clear logic variables
   const touchingSinceRef = useRef<number | null>(null);
   const stageClearRef = useRef(false);
 
@@ -47,7 +46,7 @@ const Sketch = () => {
 
   const sketch = useCallback((p: p5) => {
     p.setup = () => {
-      const cnv = p.createCanvas(800, 1000);
+      const cnv = p.createCanvas(800, 900);
       cnv.id("main-canvas");
 
       p.blendMode(p.ADD);
@@ -56,42 +55,37 @@ const Sketch = () => {
       matterRef.current.world = matterRef.current.engine.world;
       matterRef.current.engine.gravity.y = 0.9;
 
-      // 1. 사발 모양 ground 구성
-const width = p.width;
-const height = p.height;
+      const width = p.width;
+      const height = p.height;
 
-// 👄 U자형 입모양 ground vertices 생성
-const curvePoints = [];
-const segments = 20;
-const curveDepth = 10;
+      const curvePoints = [];
+      const segments = 20;
+      const curveDepth = 10;
 
-for (let i = 0; i <= segments; i++) {
-  const x = (width / segments) * i;
-  const t = (i / segments - 0.5) * 2; // -1 to 1
-  const y = height - 50 - (1 - t * t) * curveDepth; // 포물선 공식으로 U자
-  curvePoints.push({ x, y });
-}
+      for (let i = 0; i <= segments; i++) {
+        const x = (width / segments) * i;
+        const t = (i / segments - 0.5) * 2;
+        const y = height - 50 - (1 - t * t) * curveDepth;
+        curvePoints.push({ x, y });
+      }
 
-// 끝 양옆을 밑으로 닫기
-curvePoints.push({ x: width, y: height + 100 });
-curvePoints.push({ x: 0, y: height + 100 });
+      curvePoints.push({ x: width, y: height + 100 });
+      curvePoints.push({ x: 0, y: height + 100 });
 
-matterRef.current.ground = Matter.Bodies.fromVertices(
-  width / 2,
-  height - 50,
-  [curvePoints],
-  {
-    isStatic: true,
-    label: "ground",
-    render: { visible: false },
-  },
-  true
-);
+      matterRef.current.ground = Matter.Bodies.fromVertices(
+        width / 2,
+        height - 50,
+        [curvePoints],
+        {
+          isStatic: true,
+          label: "ground",
+          render: { visible: false },
+        },
+        true
+      );
 
-Matter.World.add(matterRef.current.world, matterRef.current.ground);
+      Matter.World.add(matterRef.current.world, matterRef.current.ground);
 
-
-      // ✅ Add stage trigger sensor at adjusted height
       matterRef.current.stageTrigger = Matter.Bodies.rectangle(p.width / 2, 700, p.width, 10, {
         isStatic: true,
         isSensor: true,
@@ -141,7 +135,6 @@ Matter.World.add(matterRef.current.world, matterRef.current.ground);
         }
       }
 
-      // draw stage trigger line
       p.stroke(255, 255, 100, 80);
       p.strokeWeight(2);
       p.line(0, 700, p.width, 700);
@@ -168,26 +161,15 @@ Matter.World.add(matterRef.current.world, matterRef.current.ground);
 
       p.blendMode(p.BLEND);
       if (matterRef.current.ground) {
+        const vertices = matterRef.current.ground.vertices;
         p.noStroke();
         p.fill(30, 20, 40);
-        p.rectMode(p.CENTER);
-        p.rect(matterRef.current.ground.position.x, matterRef.current.ground.position.y, p.width, 40);
+        p.beginShape();
+        for (const v of vertices) {
+          p.vertex(v.x, v.y);
+        }
+        p.endShape(p.CLOSE);
       }
-
-      // draw all 3 ground bodies
-
-if (matterRef.current.ground) {
-  const vertices = matterRef.current.ground.vertices;
-  p.noStroke();
-  p.fill(30, 20, 40);
-  p.beginShape();
-  for (const v of vertices) {
-    p.vertex(v.x, v.y);
-  }
-  p.endShape(p.CLOSE);
-}
-
-
 
       p.blendMode(p.ADD);
       pointsRef.current.forEach((pt, i) => {
@@ -202,7 +184,8 @@ if (matterRef.current.ground) {
         p.noStroke();
         p.textAlign(p.CENTER, p.CENTER);
         p.textSize(16);
-        p.text(inputWordsRef.current[i], pt.x, pt.y - 18);
+        const wordData = inputWordsRef.current[i];
+        p.text(`${wordData.word} (+${wordData.point})`, pt.x, pt.y - 18);
 
         if (i > 0) {
           const prev = pointsRef.current[i - 1];
@@ -305,11 +288,6 @@ if (matterRef.current.ground) {
     Matter.World.add(matterRef.current.world, body);
     shapesRef.current.push(body);
 
-    const averageHeight = pointsRef.current.reduce((sum, p) => sum + p.y, 0) / 4;
-    const clampedHeight = Math.min(averageHeight, 800);
-    const shapeScore = Math.max(1, Math.floor((1000 - clampedHeight) / 10));
-    setScore(prev => prev + shapeScore);
-
     setPoints([]);
     setInputWords([]);
   }, [points]);
@@ -324,8 +302,14 @@ if (matterRef.current.ground) {
       Math.random() * 200 + 100,
     ];
     const newPoint = { x: position[0], y: position[1] };
+
+    const averageHeight = newPoint.y;
+    const clampedHeight = Math.min(averageHeight, 800);
+    const wordScore = Math.max(1, Math.floor((1000 - clampedHeight) / 10));
+    setScore(prev => prev + wordScore);
+
     setPoints(prev => [...prev, newPoint]);
-    setInputWords(prev => [...prev, word]);
+    setInputWords(prev => [...prev, { word, point: wordScore }]);
   }, [wordInput, gameOver]);
 
   useEffect(() => {
